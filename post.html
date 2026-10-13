@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Travel Blog</title>
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <header class="masthead masthead-small">
+    <a class="brand" href="./" data-site="title"></a>
+  </header>
+
+  <main class="wrap">
+    <article id="post" class="post"></article>
+    <p class="back"><a href="./">&larr; All posts</a></p>
+  </main>
+
+  <footer class="footer">&copy; <span id="year"></span> <span data-site="author"></span></footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+  <script src="assets/site.js"></script>
+  <script>renderPost();</script>
+</body>
+</html>

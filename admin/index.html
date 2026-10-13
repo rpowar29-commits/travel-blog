@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Writing desk</title>
+  <link rel="stylesheet" href="../assets/style.css">
+  <style>
+    body { font-family: var(--sans); }
+    .desk { max-width: 1100px; margin: 0 auto; padding: 24px 20px 60px; display: grid; gap: 28px; grid-template-columns: 250px 1fr; }
+    @media (max-width: 800px) { .desk { grid-template-columns: 1fr; } }
+    .top { max-width: 1100px; margin: 0 auto; padding: 20px 20px 0; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+    .top h1 { font-family: var(--serif); font-size: 1.5rem; margin: 0; flex: 1; }
+    .top a { font-size: .9rem; }
+    aside h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 10px; }
+    .list { list-style: none; margin: 0 0 16px; padding: 0; }
+    .list button { all: unset; display: block; width: 100%; box-sizing: border-box; padding: 9px 12px; border-radius: 6px; cursor: pointer; }
+    .list button:hover, .list button.on { background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); }
+    .list small { display: block; color: var(--muted); }
+    form { display: grid; gap: 14px; }
+    label { display: grid; gap: 5px; font-size: .85rem; color: var(--muted); }
+    input, textarea {
+      font: inherit; color: var(--text); background: var(--surface);
+      border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; width: 100%;
+    }
+    input:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+    #title { font-family: var(--serif); font-size: 1.5rem; }
+    textarea { min-height: 380px; font-family: var(--serif); font-size: 1.08rem; line-height: 1.65; resize: vertical; }
+    .row { display: grid; grid-template-columns: 180px 1fr; gap: 14px; }
+    .btn {
+      font: inherit; cursor: pointer; border-radius: 6px; padding: 9px 16px;
+      border: 1px solid var(--line); background: var(--surface); color: var(--text);
+    }
+    .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+    .btn.danger { color: #c0392b; margin-left: auto; }
+    .btn:disabled { opacity: .5; cursor: default; }
+    .bar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+    .photos { display: flex; gap: 10px; flex-wrap: wrap; }
+    .photo { position: relative; width: 110px; cursor: pointer; }
+    .photo img { width: 110px; height: 80px; object-fit: cover; border-radius: 6px; border: 3px solid transparent; }
+    .photo.cover img { border-color: var(--accent); }
+    .photo span { display: block; font-size: .72rem; color: var(--muted); text-align: center; }
+    .hint { font-size: .82rem; color: var(--muted); margin: 0; }
+    #msg { font-size: .9rem; min-height: 1.4em; margin: 0; }
+    #msg.err { color: #c0392b; }
+  </style>
+</head>
+<body>
+  <div class="top">
+    <h1>Writing desk</h1>
+    <a href="/" target="_blank">View the blog</a>
+    <button class="btn primary" id="publish">Publish to website</button>
+  </div>
+
+  <div class="desk">
+    <aside>
+      <button class="btn" id="new" style="width:100%;margin-bottom:18px">+ New post</button>
+      <h2>Your posts</h2>
+      <ul class="list" id="list"></ul>
+    </aside>
+
+    <form id="form">
+      <label>Title <input id="title" placeholder="A week in Lisbon" required></label>
+      <div class="row">
+        <label>Date <input id="date" type="date" required></label>
+        <label>Place (optional) <input id="location" placeholder="Lisbon, Portugal"></label>
+      </div>
+
+      <div class="bar">
+        <button type="button" class="btn" id="addPhotos">Add photos</button>
+        <input type="file" id="files" accept="image/*" multiple hidden>
+        <p class="hint">Photos are placed where your cursor is in the story. Click a photo below to make it the cover.</p>
+      </div>
+      <div class="photos" id="photos"></div>
+
+      <label>Your story
+        <textarea id="body" placeholder="Start writing…"></textarea>
+      </label>
+      <p class="hint">Leave a blank line between paragraphs. <code>## Heading</code> makes a heading, <code>**bold**</code> makes bold,
+        and the text inside <code>![ ]</code> before a photo becomes its caption.</p>
+
+      <div class="bar">
+        <button class="btn primary" id="save">Save</button>
+        <button type="button" class="btn" id="view" disabled>View post</button>
+        <button type="button" class="btn danger" id="delete" disabled>Delete post</button>
+      </div>
+      <p id="msg"></p>
+    </form>
+  </div>
+
+  <script>
+    const $ = id => document.getElementById(id);
+    const today = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+    let posts = [], slug = null, cover = '', photoDir = '';
+
+    function say(text, err) { $('msg').textContent = text; $('msg').className = err ? 'err' : ''; }
+
+    async function api(path, data) {
+      const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data || {}) });
+      const out = await r.json();
+      if (!r.ok) throw new Error(out.error || 'Something went wrong.');
+      return out;
+    }
+
+    async function refresh() {
+      posts = await fetch('/posts/index.json', { cache: 'no-store' }).then(r => r.json());
+      $('list').replaceChildren(...posts.map(p => {
+        const li = document.createElement('li'), b = document.createElement('button'), s = document.createElement('small');
+        b.type = 'button'; b.textContent = p.title; b.className = p.slug === slug ? 'on' : '';
+        s.textContent = p.date; b.append(s);
+        b.onclick = () => open(p.slug);
+        li.append(b);
+        return li;
+      }));
+      const st = await fetch('/api/status').then(r => r.json());
+      $('publish').textContent = st.unpublished ? 'Publish to website' : 'Website is up to date';
+      $('publish').disabled = !st.unpublished;
+    }
+
+    function showPhotos() {
+      const paths = [...$('body').value.matchAll(/!\[[^\]]*\]\(([^)]+)\)/g)].map(m => m[1]);
+      if (cover && !paths.includes(cover)) cover = '';
+      if (!cover && paths.length) cover = paths[0];
+      $('photos').replaceChildren(...paths.map(p => {
+        const d = document.createElement('div'), i = document.createElement('img'), s = document.createElement('span');
+        d.className = 'photo' + (p === cover ? ' cover' : '');
+        i.src = '/' + p; s.textContent = p === cover ? 'Cover photo' : 'Set as cover';
+        d.append(i, s);
+        d.onclick = () => { cover = p; showPhotos(); };
+        return d;
+      }));
+    }
+
+    function blank() {
+      slug = null; cover = '';
+      photoDir = today() + '-' + Date.now().toString(36);
+      $('form').reset(); $('date').value = today();
+      $('view').disabled = $('delete').disabled = true;
+      say(''); showPhotos(); refresh();
+    }
+
+    async function open(s) {
+      const p = posts.find(x => x.slug === s);
+      slug = s; cover = p.cover;
+      photoDir = today() + '-' + Date.now().toString(36);
+      $('title').value = p.title; $('date').value = p.date; $('location').value = p.location;
+      $('body').value = await fetch(`/posts/${s}.md`, { cache: 'no-store' }).then(r => r.text());
+      $('view').disabled = $('delete').disabled = false;
+      say(''); showPhotos(); refresh();
+    }
+
+    // Phone photos are huge; shrink them so pages load quickly.
+    async function shrink(file) {
+      const img = await createImageBitmap(file);
+      const scale = Math.min(1, 1800 / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * scale); c.height = Math.round(img.height * scale);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      return c.toDataURL('image/jpeg', 0.85);
+    }
+
+    function insert(text) {
+      const t = $('body'), at = t.selectionStart;
+      const before = t.value.slice(0, at).replace(/\s+$/, ''), after = t.value.slice(t.selectionEnd).replace(/^\s+/, '');
+      const head = before ? before + '\n\n' : '';
+      t.value = head + text + '\n\n' + after;
+      t.selectionStart = t.selectionEnd = (head + text).length + 2;
+    }
+
+    $('addPhotos').onclick = () => $('files').click();
+    $('files').onchange = async e => {
+      for (const file of e.target.files) {
+        try {
+          say(`Adding ${file.name}…`);
+          const { path } = await api('/api/upload', { dir: photoDir, name: file.name, data: await shrink(file) });
+          insert(`![](${path})`);
+        } catch (err) {
+          say(`Could not add ${file.name}. Try a JPG or PNG photo.`, true);
+          continue;
+        }
+        say('');
+      }
+      e.target.value = '';
+      showPhotos();
+      $('body').focus();
+    };
+
+    $('body').addEventListener('input', showPhotos);
+
+    $('form').onsubmit = async e => {
+      e.preventDefault();
+      try {
+        showPhotos();
+        ({ slug } = await api('/api/save', {
+          slug, cover, title: $('title').value, date: $('date').value, location: $('location').value, body: $('body').value,
+        }));
+        $('view').disabled = $('delete').disabled = false;
+        say('Saved. Press “Publish to website” when you want it online.');
+        refresh();
+      } catch (err) { say(err.message, true); }
+    };
+
+    $('view').onclick = () => window.open(`/post.html?p=${slug}`, '_blank');
+
+    $('delete').onclick = async () => {
+      if (!confirm(`Delete “${$('title').value}”?`)) return;
+      await api('/api/delete', { slug });
+      blank();
+    };
+
+    $('new').onclick = blank;
+
+    $('publish').onclick = async () => {
+      $('publish').disabled = true; say('Publishing…');
+      try { await api('/api/publish'); say('Published. The website updates in a minute or two.'); }
+      catch (err) { say('Publishing failed: ' + err.message, true); }
+      refresh();
+    };
+
+    blank();
+  </script>
+</body>
+</html>
